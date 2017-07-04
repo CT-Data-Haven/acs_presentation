@@ -1,0 +1,306 @@
+---
+title: "Making Local ACS Profiles in R"
+author: "Camille Seaberry, DataHaven"
+date: "July 4, 2017"
+output:
+  ioslides_presentation:
+    highlight: kate
+    self_contained: no
+    smaller: yes
+    transition: faster
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = T
+)
+```
+
+
+## Introducing `acs.R`
+
+* `acs.R` package provides easier interface for working with Census API
+* Focused on ACS, but also can access SF1, SF3 decennial tables
+* Comes with its own weird objects---something to get used to
+* Developed by Ezra Habel Glenn at MIT
+* Very good user guide! http://bit.ly/acshandbook
+
+
+## Goal & what we're working on
+
+**Goal:** make a profile of several indicators for local geographies in R
+
+**Input:** the `acs.R` package & API key from the Census
+
+**Output:** CSV file ready to share with clients, public, etc
+
+
+## The plan
+
+* Make combined geographies
+* Pull several ACS tables using the `acs` package
+* Aggregate variables as needed
+* Calculate stuff---rates, etc
+* Get everything into a single dataframe & write to csv
+
+```{r}
+library(acs)
+```
+
+
+## #TeamTidyverse
+
+* Making heavy use of the tidyverse packages
+* `purrr` lets us use `map` functions to work with lists
+* Learn more: 
+    + http://tidyverse.org/
+    + http://r4ds.had.co.nz/
+
+```{r}
+library(tidyverse)
+library(stringr)
+```
+
+
+## Making ACS geographies
+
+* `acs` package has several of its own object types, including `geo.set` for geographies
+* Make `geo.set` objects based on FIPS codes, names
+* Can combine multiple geographies in a few ways:
+    + as a list of geographies (`combine` = `FALSE`)
+    + a merged geography (`combine` = `TRUE`)
+  
+  
+## Local geographies
+
+See documentation on `geo.make` to see lots of different ways to make geographies, given FIPS codes and names. Ones I use commonly involve:
+
+Single state
+
+```{r}
+ct <- geo.make(state = 09)
+```
+
+Single town
+
+```{r}
+nhv <- geo.make(state = 09, county = 09, county.subdivision = "New Haven")
+```
+
+Multiple towns merged into single geography with `combine = T`
+
+```{r}
+inner_ring <- geo.make(state = 09, county = 09, 
+                       county.subdivision = c("Hamden", "West Haven", "East Haven"), 
+                       combine = T, combine.term = "Inner Ring towns")
+```
+
+
+## Local geographies con't
+
+Neighborhoods get a little more tricky
+
+Single Census tract
+
+```{r}
+dixwell <- geo.make(state = 09, county = 09, tract = 141600)
+```
+
+Single tract, multiple block groups merged
+
+```{r}
+west_rock <- geo.make(state = 09, county = 09, 
+                      tract = 141300, block.group = c(1, 4), 
+                      combine = T, combine.term = "West Rock")
+```
+
+Mashup of block groups from multiple tracts (using wildcard `"*"`)
+
+```{r}
+beaver_hills <- geo.make(state = 09, county = 09, 
+                         tract = c(141400, 141300), block.group = c("*", 2), 
+                         combine = T, combine.term = "Beaver Hills")
+```
+
+Then make `geo.set` using `c`
+
+```{r}
+geos <- c(ct, nhv, inner_ring, beaver_hills, dixwell, west_rock)
+```
+
+
+## Pulling an ACS table
+
+Easiest way to find table numbers is on FactFinder :(
+
+Total population: B01003
+
+`acs.fetch` gets an ACS table for a geography & year---yields an `acs` object
+
+```{r}
+pop <- acs.fetch(geography = geos, endyear = 2015, 
+                 table.number = "B01003", col.names = "pretty")
+pop
+```
+
+
+## Pulling several ACS tables
+
+Using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects
+
+```{r}
+table_nums <- list( 
+  total_pop = "B01003", 
+  poverty = "C17002", 
+  tenure = "B25003" 
+)
+
+fetch <- table_nums %>% 
+  map(~acs.fetch(geography = geos, endyear = 2015, 
+                 table.number = ., col.names = "pretty"))
+```
+
+
+## Analysis
+
+`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`
+
+(I got tired of repeating some of these operations, and wrote an entire package to streamline this: https://github.com/CT-Data-Haven/acsprofiles)
+
+```{r}
+# use another list to hold tables
+table <- vector("list", length = length(fetch)) %>% setNames(names(fetch))
+```
+
+### Total population
+
+Total population is ready to go, but it helps to shorten the name
+
+```{r}
+table$total_pop <- fetch$total_pop[, 1]
+acs.colnames(table$total_pop) <- "num_total_pop"
+```
+
+
+## Analysis con't
+
+### Homeownership rate
+
+Step by step:
+
+* Get denominator: total households (column 1)
+* Get number of owner-occupied households (column 2)
+* Divide to get rate
+
+Divide using `divide.acs` from `acs.R`
+
+```{r}
+households <- fetch$tenure[, 1]
+owned <- fetch$tenure[, 2]
+owned_rate <- divide.acs(owned, households)
+
+table$tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
+
+# names come out ugly after division
+acs.colnames(table$tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
+```
+
+
+## Analysis con't
+
+### Poverty & low-income rates
+
+Step by step:
+
+* Get denominator: total population for which poverty status is determined (column 1)
+* Get population in poverty, i.e. below 1.0 x FPL (columns 2 + 3)
+* Get low-income population, i.e. below 2.0 x FPL (columns 2 through 7)
+* Divide to get rates
+
+
+## Poverty & low-income con't
+
+Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`
+
+```{r}
+deter <- fetch$poverty[, 1]
+poverty <- apply(X = fetch$poverty[, 2:3], FUN = sum, MARGIN = 2, agg.term = "poverty")
+pov_rate <- divide.acs(poverty, deter)
+
+low_income <- apply(X = fetch$poverty[, 2:7], FUN = sum, MARGIN = 2, agg.term = "low inc")
+low_inc_rate <- divide.acs(low_income, deter)
+
+table$poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
+  reduce(cbind)
+
+# names come out ugly after division
+acs.colnames(table$poverty) <- c("num_poverty_determined", "num_in_poverty", 
+                      "percent_poverty", "num_low_income", "percent_low_income")
+```
+
+
+## Finish with a dataframe
+
+`acs` objects have several slots, including `@geography`, `@estimate`, `@standard.error`
+
+A simple dataframe here will contain the name of the geography, then columns for all estimates. Using `@standard.error`, you can include margins of error calculations.
+
+```{r}
+all_tables <- table %>% reduce(cbind)
+
+profile <- data.frame(name = all_tables@geography$NAME,
+                      all_tables@estimate,
+                      all_tables@standard.error * qnorm(0.95)) %>%
+  tbl_df() %>%
+  mutate(name = str_replace(name, " town,.+", "")) %>%
+  mutate_at(vars(starts_with("percent")), funs(round(., digits = 3))) %>%
+  mutate_at(vars(starts_with("num")), funs(round(.))) %>%
+  setNames(str_replace(names(.), ".1", "_moe"))
+
+# manually changing name for Dixwell---could use workaround if there were more to redo
+profile$name[str_detect(profile$name, "Census Tract 1416")] <- "Dixwell"
+```
+
+
+## Our profile is ready!
+
+```{r}
+rmarkdown::paged_table(profile)
+write_csv(profile, "mini ACS profile.csv")
+```
+
+
+## Same limitations as always
+
+Having a great workflow doesn't get us over the problem of large margins of error with small geographies. MOEs for low-income rates aren't bad for towns & bigger, but ugly for neighborhoods
+
+```{r, include=FALSE}
+pov_df <- profile %>%
+  select(name, percent_low_income, percent_low_income_moe) %>%
+  mutate(upper = percent_low_income + percent_low_income_moe,
+         lower = percent_low_income - percent_low_income_moe) %>%
+  rename(estimate = percent_low_income) %>%
+  select(-percent_low_income_moe)
+```
+
+```{r, echo=FALSE}
+ggplot(pov_df, aes(x = reorder(name, desc(estimate)), y = estimate)) +
+  geom_col(fill = "#8B83E4") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = NULL, y = "Low-income rate", title = "Low-income rate by location, 2015")
+```
+
+
+## Have fun with the ACS!
+
+https://github.com/CT-Data-Haven
+
+camille@ctdatahaven.org
+
+
+
+
