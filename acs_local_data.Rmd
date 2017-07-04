@@ -64,6 +64,7 @@ library(tidyverse)
 library(stringr)
 ```
 
+There's a very new (May 2017) package called `tidycensus` that I haven't worked with yet, but recommend people also check out: https://github.com/walkerke/tidycensus
 
 ## Making ACS geographies
 
