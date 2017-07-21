@@ -1,9 +1,14 @@
-# Making Local ACS Profiles in R
-Camille Seaberry, DataHaven  
-July 4, 2017  
+---
+title: "Making Local ACS Profiles in R"
+author: "Camille Seaberry, DataHaven"
+date: "July 4, 2017"
+output:
+  html_notebook: 
+    highlight: kate
+    theme: spacelab
+---
 
-
-
+See this presentation at https://ct-data-haven.github.io/acs_presentation
 
 ## Introducing `acs.R`
 
@@ -54,8 +59,7 @@ Some resources for practicing R:
     + http://tidyverse.org/
     + http://r4ds.had.co.nz/
 
-
-```r
+```{r}
 library(acs)
 library(tidyverse)
 library(stringr)
@@ -95,22 +99,19 @@ See documentation on `geo.make` to see lots of different ways to make geographie
 
 Single state
 
-
-```r
+```{r}
 ct <- geo.make(state = 09)
 ```
 
 Single town
 
-
-```r
+```{r}
 nhv <- geo.make(state = 09, county = 09, county.subdivision = "New Haven")
 ```
 
 Multiple towns merged into single geography with `combine = T`
 
-
-```r
+```{r}
 inner_ring <- geo.make(state = 09, county = 09, 
                        county.subdivision = c("Hamden", "West Haven", "East Haven"), 
                        combine = T, combine.term = "Inner Ring towns")
@@ -123,15 +124,13 @@ inner_ring <- geo.make(state = 09, county = 09,
 
 Single Census tract
 
-
-```r
+```{r}
 dixwell <- geo.make(state = 09, county = 09, tract = 141600)
 ```
 
 Single tract, multiple block groups merged
 
-
-```r
+```{r}
 west_rock <- geo.make(state = 09, county = 09, 
                       tract = 141300, block.group = c(1, 4), 
                       combine = T, combine.term = "West Rock")
@@ -139,8 +138,7 @@ west_rock <- geo.make(state = 09, county = 09,
 
 Mashup of block groups from multiple tracts (using wildcard `"*"`)
 
-
-```r
+```{r}
 beaver_hills <- geo.make(state = 09, county = 09, 
                          tract = c(141400, 141300), block.group = c("*", 2), 
                          combine = T, combine.term = "Beaver Hills")
@@ -148,8 +146,7 @@ beaver_hills <- geo.make(state = 09, county = 09,
 
 Then make `geo.set` using `c`
 
-
-```r
+```{r}
 geos <- c(ct, nhv, inner_ring, beaver_hills, dixwell, west_rock)
 ```
 
@@ -160,25 +157,10 @@ Total population: table number B01003
 
 `acs.fetch` gets an ACS table for a geography & year---yields an `acs` object
 
-
-```r
+```{r}
 pop <- acs.fetch(geography = geos, endyear = 2015, 
                  table.number = "B01003", col.names = "pretty")
-pop
-```
-
-```
-## ACS DATA: 
-##  2011 -- 2015 ;
-##   Estimates w/90% confidence intervals;
-##   for different intervals, see confint()
-##                                                  Total Population: Total    
-## Connecticut                                      3593222 +/- 0              
-## New Haven town, New Haven County, Connecticut    130612 +/- 50              
-## Inner Ring towns                                 145816 +/- 96.4676111448812
-## Beaver Hills                                     5521 +/- 805.957194893128  
-## Census Tract 1416, New Haven County, Connecticut 4898 +/- 503               
-## West Rock                                        4132 +/- 463.159799637231
+print(pop)
 ```
 
 
@@ -186,8 +168,7 @@ pop
 
 My favorite method: using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects. Super convenient when you're working with 20+ tables.
 
-
-```r
+```{r}
 table_nums <- list( 
   total_pop = "B01003", 
   tenure = "B25003",
@@ -214,8 +195,7 @@ I'll have several `acs` objects after analysis---`total_pop`, `tenure`, `poverty
 
 Total population is ready to go, but it helps to shorten the name (also helps with a rounding trick later)
 
-
-```r
+```{r}
 total_pop <- fetch$total_pop[, 1]
 acs.colnames(total_pop) <- "num_total_pop"
 ```
@@ -233,8 +213,7 @@ Step by step:
 
 Divide using `divide.acs` from `acs.R`
 
-
-```r
+```{r}
 households <- fetch$tenure[, 1]
 owned <- fetch$tenure[, 2]
 owned_rate <- divide.acs(owned, households)
@@ -262,8 +241,7 @@ Step by step:
 
 Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`. Really not as ugly as this looks!
 
-
-```r
+```{r}
 deter <- fetch$poverty[, 1]
 poverty <- apply(X = fetch$poverty[, 2:3], FUN = sum, MARGIN = 2, agg.term = "poverty")
 pov_rate <- divide.acs(poverty, deter)
@@ -286,8 +264,7 @@ acs.colnames(poverty) <- c("num_poverty_determined", "num_in_poverty",
 
 A simple dataframe here will contain the name of the geography, then columns for all estimates. Using `@standard.error`, you can include margins of error calculations.
 
-
-```r
+```{r}
 all_tables <- list(total_pop, tenure, poverty) %>% reduce(cbind)
 
 # multiplying standard.error by qnorm(0.95) to get 90% MOE as used in ACS tables online
@@ -307,19 +284,9 @@ profile$name[str_detect(profile$name, "Census Tract 1416")] <- "Dixwell"
 
 ## Our profile is ready!
 
-
-```r
+```{r}
 rmarkdown::paged_table(profile)
-```
-
-<div data-pagedtable="false">
-  <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["name"],"name":[1],"type":["chr"],"align":["left"]},{"label":["num_total_pop"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["num_households"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["num_owned_hh"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["percent_owned_hh"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["num_poverty_determined"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["num_in_poverty"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["percent_in_poverty"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["num_low_income"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["percent_low_income"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["num_total_pop_moe"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["num_households_moe"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["num_owned_hh_moe"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["percent_owned_hh_moe"],"name":[14],"type":["dbl"],"align":["right"]},{"label":["num_poverty_determined_moe"],"name":[15],"type":["dbl"],"align":["right"]},{"label":["num_in_poverty_moe"],"name":[16],"type":["dbl"],"align":["right"]},{"label":["percent_in_poverty_moe"],"name":[17],"type":["dbl"],"align":["right"]},{"label":["num_low_income_moe"],"name":[18],"type":["dbl"],"align":["right"]},{"label":["percent_low_income_moe"],"name":[19],"type":["dbl"],"align":["right"]}],"data":[{"1":"Connecticut","2":"3593222","3":"1352583","4":"906227","5":"0.670","6":"3483303","7":"366351","8":"0.105","9":"822732","10":"0.236","11":"0","12":"3661","13":"5290","14":"0.004","15":"824","16":"7025","17":"0.002","18":"10695","19":"0.003"},{"1":"New Haven","2":"130612","3":"49771","4":"14374","5":"0.289","6":"121961","7":"32480","8":"0.266","9":"59530","10":"0.488","11":"50","12":"926","13":"663","14":"0.014","15":"552","16":"2312","17":"0.019","18":"3006","19":"0.025"},{"1":"Inner Ring towns","2":"145816","3":"54537","4":"34404","5":"0.631","6":"137192","7":"15007","8":"0.109","9":"35310","10":"0.257","11":"96","12":"818","13":"781","14":"0.017","15":"599","16":"1508","17":"0.011","18":"2331","19":"0.017"},{"1":"Beaver Hills","2":"5521","3":"2065","4":"906","5":"0.439","6":"5521","7":"1401","8":"0.254","9":"2608","10":"0.472","11":"806","12":"240","13":"163","14":"0.094","15":"806","16":"574","17":"0.110","18":"755","19":"0.153"},{"1":"Dixwell","2":"4898","3":"1832","4":"262","5":"0.143","6":"4099","7":"1344","8":"0.328","9":"2213","10":"0.540","11":"503","12":"146","13":"101","14":"0.056","15":"498","16":"451","17":"0.117","18":"551","19":"0.150"},{"1":"West Rock","2":"4132","3":"843","4":"123","5":"0.146","6":"2066","7":"802","8":"0.388","9":"1154","10":"0.559","11":"463","12":"126","13":"47","14":"0.059","15":"449","16":"333","17":"0.182","18":"372","19":"0.217"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
-
-```r
-write_csv(profile, "mini ACS profile.csv")
+# write_csv(profile, "mini ACS profile.csv")
 ```
 
 
@@ -327,9 +294,23 @@ write_csv(profile, "mini ACS profile.csv")
 
 Having a great workflow doesn't get us over the problem of large margins of error with small geographies. MOEs for low-income rates aren't bad for towns & bigger, but ugly for neighborhoods
 
+```{r, include=FALSE}
+pov_df <- profile %>%
+  select(name, percent_low_income, percent_low_income_moe) %>%
+  mutate(upper = percent_low_income + percent_low_income_moe,
+         lower = percent_low_income - percent_low_income_moe) %>%
+  rename(estimate = percent_low_income) %>%
+  select(-percent_low_income_moe)
+```
 
-
-![](index_files/figure-html/unnamed-chunk-17-1.png)<!-- -->
+```{r, echo=FALSE}
+bars <- ggplot(pov_df, aes(x = reorder(name, desc(estimate)), y = estimate)) +
+  geom_col(fill = "#8B83E4") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = NULL, y = "Low-income rate", title = "Low-income rate by location, 2015")
+print(bars)
+```
 
 
 ## Have fun with the ACS!
@@ -337,7 +318,4 @@ Having a great workflow doesn't get us over the problem of large margins of erro
 https://github.com/CT-Data-Haven
 
 camille@ctdatahaven.org
-
-
-
 
