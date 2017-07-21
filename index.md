@@ -34,9 +34,16 @@ See the repo for this presentation at https://github.com/CT-Data-Haven/acs_prese
 * Get everything into a single dataframe & write to csv
 
 
-```r
-library(acs)
-```
+## Brushing up on R
+
+This will be pretty technical---sorry in advance!
+
+Some resources for practicing R:
+
+* DataCamp: http://datacamp.com Costs money but is totally worth it for interactive courses
+* Tutorials from RStudio: http://rstudio.com/online-learning
+* R for Data Science free online book: http://r4ds.had.co.nz/
+* swirl, package for R tutorials inside RStudio: http://swirlstats.com/
 
 
 ## #TeamTidyverse
@@ -49,16 +56,34 @@ library(acs)
 
 
 ```r
+library(acs)
 library(tidyverse)
 library(stringr)
 ```
 
 There's a very new (May 2017) package called `tidycensus` that I haven't worked with yet, but recommend people also check out: https://github.com/walkerke/tidycensus
 
+
+## ACS helper functions
+
+`acs` package comes with many helper functions:
+
+* `geo.lookup` to help with looking up geography details---useful for getting FIPS codes, or when you forgot what county a town is in
+* `acs.lookup` for variables and table numbers, but the output is annoying to work with
+* `currency.convert` for inflation adjustments
+* Plus dataframes of FIPS codes
+
+### Getting ACS table numbers
+
+In addition to `acs.lookup` (if you can sort through the output okay), you can get table numbers from ACS technical docs (look up "table shells").
+
+Or, the easiest way to get table numbers might just be FactFinder :(
+
+
 ## Making ACS geographies
 
 * `acs` package has several of its own object types, including `geo.set` for geographies
-* Make `geo.set` objects based on FIPS codes, names
+* Make `geo.set` objects based on FIPS codes and/or names
 * Can combine multiple geographies in a few ways:
     + as a list of geographies (`combine` = `FALSE`)
     + a merged geography (`combine` = `TRUE`)
@@ -94,7 +119,7 @@ inner_ring <- geo.make(state = 09, county = 09,
 
 ## Local geographies con't
 
-Neighborhoods get a little more tricky
+#### Neighborhoods get a little more tricky
 
 Single Census tract
 
@@ -131,9 +156,7 @@ geos <- c(ct, nhv, inner_ring, beaver_hills, dixwell, west_rock)
 
 ## Pulling an ACS table
 
-Easiest way to find table numbers is on FactFinder :(
-
-Total population: B01003
+Total population: table number B01003
 
 `acs.fetch` gets an ACS table for a geography & year---yields an `acs` object
 
@@ -161,14 +184,14 @@ pop
 
 ## Pulling several ACS tables
 
-Using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects
+My favorite method: using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects. Super convenient when you're working with 20+ tables.
 
 
 ```r
 table_nums <- list( 
   total_pop = "B01003", 
-  poverty = "C17002", 
-  tenure = "B25003" 
+  tenure = "B25003",
+  poverty = "C17002"
 )
 
 fetch <- table_nums %>% 
@@ -179,24 +202,22 @@ fetch <- table_nums %>%
 
 ## Analysis
 
-`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`
+`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`.
+
+Margins of error are handled for you! Add, divide, etc. columns in your tables without worrying about how to deal with MOEs.
 
 (I got tired of repeating some of these operations, and wrote an entire package to streamline this: https://github.com/CT-Data-Haven/acsprofiles)
 
-
-```r
-# use another list to hold tables
-table <- vector("list", length = length(fetch)) %>% setNames(names(fetch))
-```
+I'll have several `acs` objects after analysis---`total_pop`, `tenure`, `poverty`---then `cbind` them all together into a single `acs` object.
 
 ### Total population
 
-Total population is ready to go, but it helps to shorten the name
+Total population is ready to go, but it helps to shorten the name (also helps with a rounding trick later)
 
 
 ```r
-table$total_pop <- fetch$total_pop[, 1]
-acs.colnames(table$total_pop) <- "num_total_pop"
+total_pop <- fetch$total_pop[, 1]
+acs.colnames(total_pop) <- "num_total_pop"
 ```
 
 
@@ -218,10 +239,10 @@ households <- fetch$tenure[, 1]
 owned <- fetch$tenure[, 2]
 owned_rate <- divide.acs(owned, households)
 
-table$tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
+tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
 
 # names come out ugly after division
-acs.colnames(table$tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
+acs.colnames(tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
 ```
 
 
@@ -239,7 +260,7 @@ Step by step:
 
 ## Poverty & low-income con't
 
-Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`
+Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`. Really not as ugly as this looks!
 
 
 ```r
@@ -250,12 +271,12 @@ pov_rate <- divide.acs(poverty, deter)
 low_income <- apply(X = fetch$poverty[, 2:7], FUN = sum, MARGIN = 2, agg.term = "low inc")
 low_inc_rate <- divide.acs(low_income, deter)
 
-table$poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
+poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
   reduce(cbind)
 
 # names come out ugly after division
-acs.colnames(table$poverty) <- c("num_poverty_determined", "num_in_poverty", 
-                      "percent_poverty", "num_low_income", "percent_low_income")
+acs.colnames(poverty) <- c("num_poverty_determined", "num_in_poverty", 
+                      "percent_in_poverty", "num_low_income", "percent_low_income")
 ```
 
 
@@ -267,8 +288,9 @@ A simple dataframe here will contain the name of the geography, then columns for
 
 
 ```r
-all_tables <- table %>% reduce(cbind)
+all_tables <- list(total_pop, tenure, poverty) %>% reduce(cbind)
 
+# multiplying standard.error by qnorm(0.95) to get 90% MOE as used in ACS tables online
 profile <- data.frame(name = all_tables@geography$NAME,
                       all_tables@estimate,
                       all_tables@standard.error * qnorm(0.95)) %>%
@@ -292,7 +314,7 @@ rmarkdown::paged_table(profile)
 
 <div data-pagedtable="false">
   <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["name"],"name":[1],"type":["chr"],"align":["left"]},{"label":["num_total_pop"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["num_poverty_determined"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["num_in_poverty"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["percent_poverty"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["num_low_income"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["percent_low_income"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["num_households"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["num_owned_hh"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["percent_owned_hh"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["num_total_pop_moe"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["num_poverty_determined_moe"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["num_in_poverty_moe"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["percent_poverty_moe"],"name":[14],"type":["dbl"],"align":["right"]},{"label":["num_low_income_moe"],"name":[15],"type":["dbl"],"align":["right"]},{"label":["percent_low_income_moe"],"name":[16],"type":["dbl"],"align":["right"]},{"label":["num_households_moe"],"name":[17],"type":["dbl"],"align":["right"]},{"label":["num_owned_hh_moe"],"name":[18],"type":["dbl"],"align":["right"]},{"label":["percent_owned_hh_moe"],"name":[19],"type":["dbl"],"align":["right"]}],"data":[{"1":"Connecticut","2":"3593222","3":"3483303","4":"366351","5":"0.105","6":"822732","7":"0.236","8":"1352583","9":"906227","10":"0.670","11":"0","12":"824","13":"7025","14":"0.002","15":"10695","16":"0.003","17":"3661","18":"5290","19":"0.004"},{"1":"New Haven","2":"130612","3":"121961","4":"32480","5":"0.266","6":"59530","7":"0.488","8":"49771","9":"14374","10":"0.289","11":"50","12":"552","13":"2312","14":"0.019","15":"3006","16":"0.025","17":"926","18":"663","19":"0.014"},{"1":"Inner Ring towns","2":"145816","3":"137192","4":"15007","5":"0.109","6":"35310","7":"0.257","8":"54537","9":"34404","10":"0.631","11":"96","12":"599","13":"1508","14":"0.011","15":"2331","16":"0.017","17":"818","18":"781","19":"0.017"},{"1":"Beaver Hills","2":"5521","3":"5521","4":"1401","5":"0.254","6":"2608","7":"0.472","8":"2065","9":"906","10":"0.439","11":"806","12":"806","13":"574","14":"0.110","15":"755","16":"0.153","17":"240","18":"163","19":"0.094"},{"1":"Dixwell","2":"4898","3":"4099","4":"1344","5":"0.328","6":"2213","7":"0.540","8":"1832","9":"262","10":"0.143","11":"503","12":"498","13":"451","14":"0.117","15":"551","16":"0.150","17":"146","18":"101","19":"0.056"},{"1":"West Rock","2":"4132","3":"2066","4":"802","5":"0.388","6":"1154","7":"0.559","8":"843","9":"123","10":"0.146","11":"463","12":"449","13":"333","14":"0.182","15":"372","16":"0.217","17":"126","18":"47","19":"0.059"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":["name"],"name":[1],"type":["chr"],"align":["left"]},{"label":["num_total_pop"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["num_households"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["num_owned_hh"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["percent_owned_hh"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["num_poverty_determined"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["num_in_poverty"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["percent_in_poverty"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["num_low_income"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["percent_low_income"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["num_total_pop_moe"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["num_households_moe"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["num_owned_hh_moe"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["percent_owned_hh_moe"],"name":[14],"type":["dbl"],"align":["right"]},{"label":["num_poverty_determined_moe"],"name":[15],"type":["dbl"],"align":["right"]},{"label":["num_in_poverty_moe"],"name":[16],"type":["dbl"],"align":["right"]},{"label":["percent_in_poverty_moe"],"name":[17],"type":["dbl"],"align":["right"]},{"label":["num_low_income_moe"],"name":[18],"type":["dbl"],"align":["right"]},{"label":["percent_low_income_moe"],"name":[19],"type":["dbl"],"align":["right"]}],"data":[{"1":"Connecticut","2":"3593222","3":"1352583","4":"906227","5":"0.670","6":"3483303","7":"366351","8":"0.105","9":"822732","10":"0.236","11":"0","12":"3661","13":"5290","14":"0.004","15":"824","16":"7025","17":"0.002","18":"10695","19":"0.003"},{"1":"New Haven","2":"130612","3":"49771","4":"14374","5":"0.289","6":"121961","7":"32480","8":"0.266","9":"59530","10":"0.488","11":"50","12":"926","13":"663","14":"0.014","15":"552","16":"2312","17":"0.019","18":"3006","19":"0.025"},{"1":"Inner Ring towns","2":"145816","3":"54537","4":"34404","5":"0.631","6":"137192","7":"15007","8":"0.109","9":"35310","10":"0.257","11":"96","12":"818","13":"781","14":"0.017","15":"599","16":"1508","17":"0.011","18":"2331","19":"0.017"},{"1":"Beaver Hills","2":"5521","3":"2065","4":"906","5":"0.439","6":"5521","7":"1401","8":"0.254","9":"2608","10":"0.472","11":"806","12":"240","13":"163","14":"0.094","15":"806","16":"574","17":"0.110","18":"755","19":"0.153"},{"1":"Dixwell","2":"4898","3":"1832","4":"262","5":"0.143","6":"4099","7":"1344","8":"0.328","9":"2213","10":"0.540","11":"503","12":"146","13":"101","14":"0.056","15":"498","16":"451","17":"0.117","18":"551","19":"0.150"},{"1":"West Rock","2":"4132","3":"843","4":"123","5":"0.146","6":"2066","7":"802","8":"0.388","9":"1154","10":"0.559","11":"463","12":"126","13":"47","14":"0.059","15":"449","16":"333","17":"0.182","18":"372","19":"0.217"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 
@@ -307,7 +329,7 @@ Having a great workflow doesn't get us over the problem of large margins of erro
 
 
 
-![](index_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
+![](index_files/figure-html/unnamed-chunk-17-1.png)<!-- -->
 
 
 ## Have fun with the ACS!

@@ -1,7 +1,7 @@
-name,num_total_pop,num_poverty_determined,num_in_poverty,percent_poverty,num_low_income,percent_low_income,num_households,num_owned_hh,percent_owned_hh,num_total_pop_moe,num_poverty_determined_moe,num_in_poverty_moe,percent_poverty_moe,num_low_income_moe,percent_low_income_moe,num_households_moe,num_owned_hh_moe,percent_owned_hh_moe
-Connecticut,3593222,3483303,366351,0.105,822732,0.236,1352583,906227,0.67,0,824,7025,0.002,10695,0.003,3661,5290,0.004
-New Haven,130612,121961,32480,0.266,59530,0.488,49771,14374,0.289,50,552,2312,0.019,3006,0.025,926,663,0.014
-Inner Ring towns,145816,137192,15007,0.109,35310,0.257,54537,34404,0.631,96,599,1508,0.011,2331,0.017,818,781,0.017
-Beaver Hills,5521,5521,1401,0.254,2608,0.472,2065,906,0.439,806,806,574,0.11,755,0.153,240,163,0.094
-Dixwell,4898,4099,1344,0.328,2213,0.54,1832,262,0.143,503,498,451,0.117,551,0.15,146,101,0.056
-West Rock,4132,2066,802,0.388,1154,0.559,843,123,0.146,463,449,333,0.182,372,0.217,126,47,0.059
+name,num_total_pop,num_households,num_owned_hh,percent_owned_hh,num_poverty_determined,num_in_poverty,percent_in_poverty,num_low_income,percent_low_income,num_total_pop_moe,num_households_moe,num_owned_hh_moe,percent_owned_hh_moe,num_poverty_determined_moe,num_in_poverty_moe,percent_in_poverty_moe,num_low_income_moe,percent_low_income_moe
+Connecticut,3593222,1352583,906227,0.67,3483303,366351,0.105,822732,0.236,0,3661,5290,0.004,824,7025,0.002,10695,0.003
+New Haven,130612,49771,14374,0.289,121961,32480,0.266,59530,0.488,50,926,663,0.014,552,2312,0.019,3006,0.025
+Inner Ring towns,145816,54537,34404,0.631,137192,15007,0.109,35310,0.257,96,818,781,0.017,599,1508,0.011,2331,0.017
+Beaver Hills,5521,2065,906,0.439,5521,1401,0.254,2608,0.472,806,240,163,0.094,806,574,0.11,755,0.153
+Dixwell,4898,1832,262,0.143,4099,1344,0.328,2213,0.54,503,146,101,0.056,498,451,0.117,551,0.15
+West Rock,4132,843,123,0.146,2066,802,0.388,1154,0.559,463,126,47,0.059,449,333,0.182,372,0.217
