@@ -24,6 +24,8 @@ See this presentation at https://ct-data-haven.github.io/acs_presentation
 * Developed by Ezra Habel Glenn at MIT
 * Very good user guide! http://bit.ly/acshandbook
 
+See the repo for this presentation at https://github.com/CT-Data-Haven/acs_presentation
+
 
 ## Goal & what we're working on
 
@@ -42,9 +44,17 @@ See this presentation at https://ct-data-haven.github.io/acs_presentation
 * Calculate stuff---rates, etc
 * Get everything into a single dataframe & write to csv
 
-```{r}
-library(acs)
-```
+
+## Brushing up on R
+
+This will be pretty technical---sorry in advance!
+
+Some resources for practicing R:
+
+* DataCamp: http://datacamp.com Costs money but is totally worth it for interactive courses
+* Tutorials from RStudio: http://rstudio.com/online-learning
+* R for Data Science free online book: http://r4ds.had.co.nz/
+* swirl, package for R tutorials inside RStudio: http://swirlstats.com/
 
 
 ## #TeamTidyverse
@@ -56,16 +66,34 @@ library(acs)
     + http://r4ds.had.co.nz/
 
 ```{r}
+library(acs)
 library(tidyverse)
 library(stringr)
 ```
 
 There's a very new (May 2017) package called `tidycensus` that I haven't worked with yet, but recommend people also check out: https://github.com/walkerke/tidycensus
 
+
+## ACS helper functions
+
+`acs` package comes with many helper functions:
+
+* `geo.lookup` to help with looking up geography details---useful for getting FIPS codes, or when you forgot what county a town is in
+* `acs.lookup` for variables and table numbers, but the output is annoying to work with
+* `currency.convert` for inflation adjustments
+* Plus dataframes of FIPS codes
+
+### Getting ACS table numbers
+
+In addition to `acs.lookup` (if you can sort through the output okay), you can get table numbers from ACS technical docs (look up "table shells").
+
+Or, the easiest way to get table numbers might just be FactFinder :(
+
+
 ## Making ACS geographies
 
 * `acs` package has several of its own object types, including `geo.set` for geographies
-* Make `geo.set` objects based on FIPS codes, names
+* Make `geo.set` objects based on FIPS codes and/or names
 * Can combine multiple geographies in a few ways:
     + as a list of geographies (`combine` = `FALSE`)
     + a merged geography (`combine` = `TRUE`)
@@ -98,7 +126,7 @@ inner_ring <- geo.make(state = 09, county = 09,
 
 ## Local geographies con't
 
-Neighborhoods get a little more tricky
+#### Neighborhoods get a little more tricky
 
 Single Census tract
 
@@ -131,9 +159,7 @@ geos <- c(ct, nhv, inner_ring, beaver_hills, dixwell, west_rock)
 
 ## Pulling an ACS table
 
-Easiest way to find table numbers is on FactFinder :(
-
-Total population: B01003
+Total population: table number B01003
 
 `acs.fetch` gets an ACS table for a geography & year---yields an `acs` object
 
@@ -146,13 +172,13 @@ pop
 
 ## Pulling several ACS tables
 
-Using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects
+My favorite method: using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects. Super convenient when you're working with 20+ tables.
 
 ```{r}
 table_nums <- list( 
   total_pop = "B01003", 
-  poverty = "C17002", 
-  tenure = "B25003" 
+  tenure = "B25003",
+  poverty = "C17002"
 )
 
 fetch <- table_nums %>% 
@@ -163,22 +189,21 @@ fetch <- table_nums %>%
 
 ## Analysis
 
-`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`
+`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`.
+
+Margins of error are handled for you! Add, divide, etc. columns in your tables without worrying about how to deal with MOEs.
 
 (I got tired of repeating some of these operations, and wrote an entire package to streamline this: https://github.com/CT-Data-Haven/acsprofiles)
 
-```{r}
-# use another list to hold tables
-table <- vector("list", length = length(fetch)) %>% setNames(names(fetch))
-```
+I'll have several `acs` objects after analysis---`total_pop`, `tenure`, `poverty`---then `cbind` them all together into a single `acs` object.
 
 ### Total population
 
-Total population is ready to go, but it helps to shorten the name
+Total population is ready to go, but it helps to shorten the name (also helps with a rounding trick later)
 
 ```{r}
-table$total_pop <- fetch$total_pop[, 1]
-acs.colnames(table$total_pop) <- "num_total_pop"
+total_pop <- fetch$total_pop[, 1]
+acs.colnames(total_pop) <- "num_total_pop"
 ```
 
 
@@ -199,10 +224,10 @@ households <- fetch$tenure[, 1]
 owned <- fetch$tenure[, 2]
 owned_rate <- divide.acs(owned, households)
 
-table$tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
+tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
 
 # names come out ugly after division
-acs.colnames(table$tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
+acs.colnames(tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
 ```
 
 
@@ -220,7 +245,7 @@ Step by step:
 
 ## Poverty & low-income con't
 
-Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`
+Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`. Really not as ugly as this looks!
 
 ```{r}
 deter <- fetch$poverty[, 1]
@@ -230,12 +255,12 @@ pov_rate <- divide.acs(poverty, deter)
 low_income <- apply(X = fetch$poverty[, 2:7], FUN = sum, MARGIN = 2, agg.term = "low inc")
 low_inc_rate <- divide.acs(low_income, deter)
 
-table$poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
+poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
   reduce(cbind)
 
 # names come out ugly after division
-acs.colnames(table$poverty) <- c("num_poverty_determined", "num_in_poverty", 
-                      "percent_poverty", "num_low_income", "percent_low_income")
+acs.colnames(poverty) <- c("num_poverty_determined", "num_in_poverty", 
+                      "percent_in_poverty", "num_low_income", "percent_low_income")
 ```
 
 
@@ -246,8 +271,9 @@ acs.colnames(table$poverty) <- c("num_poverty_determined", "num_in_poverty",
 A simple dataframe here will contain the name of the geography, then columns for all estimates. Using `@standard.error`, you can include margins of error calculations.
 
 ```{r}
-all_tables <- table %>% reduce(cbind)
+all_tables <- list(total_pop, tenure, poverty) %>% reduce(cbind)
 
+# multiplying standard.error by qnorm(0.95) to get 90% MOE as used in ACS tables online
 profile <- data.frame(name = all_tables@geography$NAME,
                       all_tables@estimate,
                       all_tables@standard.error * qnorm(0.95)) %>%
@@ -266,6 +292,7 @@ profile$name[str_detect(profile$name, "Census Tract 1416")] <- "Dixwell"
 
 ```{r}
 knitr::kable(profile, format = "markdown")
+write_csv(profile, "mini ACS profile.csv")
 ```
 
 
@@ -273,7 +300,7 @@ knitr::kable(profile, format = "markdown")
 
 Having a great workflow doesn't get us over the problem of large margins of error with small geographies. MOEs for low-income rates aren't bad for towns & bigger, but ugly for neighborhoods
 
-```{r}
+```{r, include=FALSE}
 pov_df <- profile %>%
   select(name, percent_low_income, percent_low_income_moe) %>%
   mutate(upper = percent_low_income + percent_low_income_moe,
@@ -282,7 +309,7 @@ pov_df <- profile %>%
   select(-percent_low_income_moe)
 ```
 
-```{r}
+```{r, echo=FALSE}
 ggplot(pov_df, aes(x = reorder(name, desc(estimate)), y = estimate)) +
   geom_col(fill = "#8B83E4") +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25) +
@@ -290,4 +317,10 @@ ggplot(pov_df, aes(x = reorder(name, desc(estimate)), y = estimate)) +
   labs(x = NULL, y = "Low-income rate", title = "Low-income rate by location, 2015")
 ```
 
+
+## Have fun with the ACS!
+
+https://github.com/CT-Data-Haven
+
+camille@ctdatahaven.org
 

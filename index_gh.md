@@ -14,6 +14,8 @@ Introducing `acs.R`
 -   Developed by Ezra Habel Glenn at MIT
 -   Very good user guide! <http://bit.ly/acshandbook>
 
+See the repo for this presentation at <https://github.com/CT-Data-Haven/acs_presentation>
+
 Goal & what we're working on
 ----------------------------
 
@@ -32,9 +34,17 @@ The plan
 -   Calculate stuff---rates, etc
 -   Get everything into a single dataframe & write to csv
 
-``` r
-library(acs)
-```
+Brushing up on R
+----------------
+
+This will be pretty technical---sorry in advance!
+
+Some resources for practicing R:
+
+-   DataCamp: <http://datacamp.com> Costs money but is totally worth it for interactive courses
+-   Tutorials from RStudio: <http://rstudio.com/online-learning>
+-   R for Data Science free online book: <http://r4ds.had.co.nz/>
+-   swirl, package for R tutorials inside RStudio: <http://swirlstats.com/>
 
 \#TeamTidyverse
 ---------------
@@ -46,17 +56,34 @@ library(acs)
     -   <http://r4ds.had.co.nz/>
 
 ``` r
+library(acs)
 library(tidyverse)
 library(stringr)
 ```
 
 There's a very new (May 2017) package called `tidycensus` that I haven't worked with yet, but recommend people also check out: <https://github.com/walkerke/tidycensus>
 
+ACS helper functions
+--------------------
+
+`acs` package comes with many helper functions:
+
+-   `geo.lookup` to help with looking up geography details---useful for getting FIPS codes, or when you forgot what county a town is in
+-   `acs.lookup` for variables and table numbers, but the output is annoying to work with
+-   `currency.convert` for inflation adjustments
+-   Plus dataframes of FIPS codes
+
+### Getting ACS table numbers
+
+In addition to `acs.lookup` (if you can sort through the output okay), you can get table numbers from ACS technical docs (look up "table shells").
+
+Or, the easiest way to get table numbers might just be FactFinder :(
+
 Making ACS geographies
 ----------------------
 
 -   `acs` package has several of its own object types, including `geo.set` for geographies
--   Make `geo.set` objects based on FIPS codes, names
+-   Make `geo.set` objects based on FIPS codes and/or names
 -   Can combine multiple geographies in a few ways:
     -   as a list of geographies (`combine` = `FALSE`)
     -   a merged geography (`combine` = `TRUE`)
@@ -89,7 +116,7 @@ inner_ring <- geo.make(state = 09, county = 09,
 Local geographies con't
 -----------------------
 
-Neighborhoods get a little more tricky
+#### Neighborhoods get a little more tricky
 
 Single Census tract
 
@@ -122,9 +149,7 @@ geos <- c(ct, nhv, inner_ring, beaver_hills, dixwell, west_rock)
 Pulling an ACS table
 --------------------
 
-Easiest way to find table numbers is on FactFinder :(
-
-Total population: B01003
+Total population: table number B01003
 
 `acs.fetch` gets an ACS table for a geography & year---yields an `acs` object
 
@@ -149,13 +174,13 @@ pop
 Pulling several ACS tables
 --------------------------
 
-Using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects
+My favorite method: using `purrr` functions, map over a named list of table numbers---yields a named list of `acs` objects. Super convenient when you're working with 20+ tables.
 
 ``` r
 table_nums <- list( 
   total_pop = "B01003", 
-  poverty = "C17002", 
-  tenure = "B25003" 
+  tenure = "B25003",
+  poverty = "C17002"
 )
 
 fetch <- table_nums %>% 
@@ -166,22 +191,21 @@ fetch <- table_nums %>%
 Analysis
 --------
 
-`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`
+`acs.R` has several functions for analysis, and allows many standard functions to work on `acs` objects---check the docs for `acs-class`.
+
+Margins of error are handled for you! Add, divide, etc. columns in your tables without worrying about how to deal with MOEs.
 
 (I got tired of repeating some of these operations, and wrote an entire package to streamline this: <https://github.com/CT-Data-Haven/acsprofiles>)
 
-``` r
-# use another list to hold tables
-table <- vector("list", length = length(fetch)) %>% setNames(names(fetch))
-```
+I'll have several `acs` objects after analysis---`total_pop`, `tenure`, `poverty`---then `cbind` them all together into a single `acs` object.
 
 ### Total population
 
-Total population is ready to go, but it helps to shorten the name
+Total population is ready to go, but it helps to shorten the name (also helps with a rounding trick later)
 
 ``` r
-table$total_pop <- fetch$total_pop[, 1]
-acs.colnames(table$total_pop) <- "num_total_pop"
+total_pop <- fetch$total_pop[, 1]
+acs.colnames(total_pop) <- "num_total_pop"
 ```
 
 Analysis con't
@@ -202,10 +226,10 @@ households <- fetch$tenure[, 1]
 owned <- fetch$tenure[, 2]
 owned_rate <- divide.acs(owned, households)
 
-table$tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
+tenure <- list(households, owned, owned_rate) %>% reduce(cbind)
 
 # names come out ugly after division
-acs.colnames(table$tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
+acs.colnames(tenure) <- c("num_households", "num_owned_hh", "percent_owned_hh")
 ```
 
 Analysis con't
@@ -223,7 +247,7 @@ Step by step:
 Poverty & low-income con't
 --------------------------
 
-Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`
+Add columns as necessary using `apply`, divide using `divide.acs` from `acs.R`. Really not as ugly as this looks!
 
 ``` r
 deter <- fetch$poverty[, 1]
@@ -233,12 +257,12 @@ pov_rate <- divide.acs(poverty, deter)
 low_income <- apply(X = fetch$poverty[, 2:7], FUN = sum, MARGIN = 2, agg.term = "low inc")
 low_inc_rate <- divide.acs(low_income, deter)
 
-table$poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
+poverty <- list(deter, poverty, pov_rate, low_income, low_inc_rate) %>%
   reduce(cbind)
 
 # names come out ugly after division
-acs.colnames(table$poverty) <- c("num_poverty_determined", "num_in_poverty", 
-                      "percent_poverty", "num_low_income", "percent_low_income")
+acs.colnames(poverty) <- c("num_poverty_determined", "num_in_poverty", 
+                      "percent_in_poverty", "num_low_income", "percent_low_income")
 ```
 
 Finish with a dataframe
@@ -249,8 +273,9 @@ Finish with a dataframe
 A simple dataframe here will contain the name of the geography, then columns for all estimates. Using `@standard.error`, you can include margins of error calculations.
 
 ``` r
-all_tables <- table %>% reduce(cbind)
+all_tables <- list(total_pop, tenure, poverty) %>% reduce(cbind)
 
+# multiplying standard.error by qnorm(0.95) to get 90% MOE as used in ACS tables online
 profile <- data.frame(name = all_tables@geography$NAME,
                       all_tables@estimate,
                       all_tables@standard.error * qnorm(0.95)) %>%
@@ -275,197 +300,191 @@ knitr::kable(profile, format = "markdown")
 <colgroup>
 <col width="4%" />
 <col width="4%" />
+<col width="4%" />
+<col width="3%" />
+<col width="4%" />
 <col width="6%" />
-<col width="4%" />
-<col width="4%" />
 <col width="4%" />
 <col width="5%" />
 <col width="4%" />
-<col width="3%" />
+<col width="5%" />
+<col width="5%" />
+<col width="5%" />
 <col width="4%" />
 <col width="5%" />
 <col width="7%" />
 <col width="5%" />
-<col width="5%" />
-<col width="5%" />
 <col width="6%" />
 <col width="5%" />
-<col width="4%" />
 <col width="6%" />
 </colgroup>
 <thead>
 <tr class="header">
 <th align="left">name</th>
 <th align="right">num_total_pop</th>
-<th align="right">num_poverty_determined</th>
-<th align="right">num_in_poverty</th>
-<th align="right">percent_poverty</th>
-<th align="right">num_low_income</th>
-<th align="right">percent_low_income</th>
 <th align="right">num_households</th>
 <th align="right">num_owned_hh</th>
 <th align="right">percent_owned_hh</th>
+<th align="right">num_poverty_determined</th>
+<th align="right">num_in_poverty</th>
+<th align="right">percent_in_poverty</th>
+<th align="right">num_low_income</th>
+<th align="right">percent_low_income</th>
 <th align="right">num_total_pop_moe</th>
-<th align="right">num_poverty_determined_moe</th>
-<th align="right">num_in_poverty_moe</th>
-<th align="right">percent_poverty_moe</th>
-<th align="right">num_low_income_moe</th>
-<th align="right">percent_low_income_moe</th>
 <th align="right">num_households_moe</th>
 <th align="right">num_owned_hh_moe</th>
 <th align="right">percent_owned_hh_moe</th>
+<th align="right">num_poverty_determined_moe</th>
+<th align="right">num_in_poverty_moe</th>
+<th align="right">percent_in_poverty_moe</th>
+<th align="right">num_low_income_moe</th>
+<th align="right">percent_low_income_moe</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td align="left">Connecticut</td>
 <td align="right">3593222</td>
+<td align="right">1352583</td>
+<td align="right">906227</td>
+<td align="right">0.670</td>
 <td align="right">3483303</td>
 <td align="right">366351</td>
 <td align="right">0.105</td>
 <td align="right">822732</td>
 <td align="right">0.236</td>
-<td align="right">1352583</td>
-<td align="right">906227</td>
-<td align="right">0.670</td>
 <td align="right">0</td>
+<td align="right">3661</td>
+<td align="right">5290</td>
+<td align="right">0.004</td>
 <td align="right">824</td>
 <td align="right">7025</td>
 <td align="right">0.002</td>
 <td align="right">10695</td>
 <td align="right">0.003</td>
-<td align="right">3661</td>
-<td align="right">5290</td>
-<td align="right">0.004</td>
 </tr>
 <tr class="even">
 <td align="left">New Haven</td>
 <td align="right">130612</td>
+<td align="right">49771</td>
+<td align="right">14374</td>
+<td align="right">0.289</td>
 <td align="right">121961</td>
 <td align="right">32480</td>
 <td align="right">0.266</td>
 <td align="right">59530</td>
 <td align="right">0.488</td>
-<td align="right">49771</td>
-<td align="right">14374</td>
-<td align="right">0.289</td>
 <td align="right">50</td>
+<td align="right">926</td>
+<td align="right">663</td>
+<td align="right">0.014</td>
 <td align="right">552</td>
 <td align="right">2312</td>
 <td align="right">0.019</td>
 <td align="right">3006</td>
 <td align="right">0.025</td>
-<td align="right">926</td>
-<td align="right">663</td>
-<td align="right">0.014</td>
 </tr>
 <tr class="odd">
 <td align="left">Inner Ring towns</td>
 <td align="right">145816</td>
+<td align="right">54537</td>
+<td align="right">34404</td>
+<td align="right">0.631</td>
 <td align="right">137192</td>
 <td align="right">15007</td>
 <td align="right">0.109</td>
 <td align="right">35310</td>
 <td align="right">0.257</td>
-<td align="right">54537</td>
-<td align="right">34404</td>
-<td align="right">0.631</td>
 <td align="right">96</td>
+<td align="right">818</td>
+<td align="right">781</td>
+<td align="right">0.017</td>
 <td align="right">599</td>
 <td align="right">1508</td>
 <td align="right">0.011</td>
 <td align="right">2331</td>
 <td align="right">0.017</td>
-<td align="right">818</td>
-<td align="right">781</td>
-<td align="right">0.017</td>
 </tr>
 <tr class="even">
 <td align="left">Beaver Hills</td>
 <td align="right">5521</td>
+<td align="right">2065</td>
+<td align="right">906</td>
+<td align="right">0.439</td>
 <td align="right">5521</td>
 <td align="right">1401</td>
 <td align="right">0.254</td>
 <td align="right">2608</td>
 <td align="right">0.472</td>
-<td align="right">2065</td>
-<td align="right">906</td>
-<td align="right">0.439</td>
 <td align="right">806</td>
+<td align="right">240</td>
+<td align="right">163</td>
+<td align="right">0.094</td>
 <td align="right">806</td>
 <td align="right">574</td>
 <td align="right">0.110</td>
 <td align="right">755</td>
 <td align="right">0.153</td>
-<td align="right">240</td>
-<td align="right">163</td>
-<td align="right">0.094</td>
 </tr>
 <tr class="odd">
 <td align="left">Dixwell</td>
 <td align="right">4898</td>
+<td align="right">1832</td>
+<td align="right">262</td>
+<td align="right">0.143</td>
 <td align="right">4099</td>
 <td align="right">1344</td>
 <td align="right">0.328</td>
 <td align="right">2213</td>
 <td align="right">0.540</td>
-<td align="right">1832</td>
-<td align="right">262</td>
-<td align="right">0.143</td>
 <td align="right">503</td>
+<td align="right">146</td>
+<td align="right">101</td>
+<td align="right">0.056</td>
 <td align="right">498</td>
 <td align="right">451</td>
 <td align="right">0.117</td>
 <td align="right">551</td>
 <td align="right">0.150</td>
-<td align="right">146</td>
-<td align="right">101</td>
-<td align="right">0.056</td>
 </tr>
 <tr class="even">
 <td align="left">West Rock</td>
 <td align="right">4132</td>
+<td align="right">843</td>
+<td align="right">123</td>
+<td align="right">0.146</td>
 <td align="right">2066</td>
 <td align="right">802</td>
 <td align="right">0.388</td>
 <td align="right">1154</td>
 <td align="right">0.559</td>
-<td align="right">843</td>
-<td align="right">123</td>
-<td align="right">0.146</td>
 <td align="right">463</td>
+<td align="right">126</td>
+<td align="right">47</td>
+<td align="right">0.059</td>
 <td align="right">449</td>
 <td align="right">333</td>
 <td align="right">0.182</td>
 <td align="right">372</td>
 <td align="right">0.217</td>
-<td align="right">126</td>
-<td align="right">47</td>
-<td align="right">0.059</td>
 </tr>
 </tbody>
 </table>
+
+``` r
+write_csv(profile, "mini ACS profile.csv")
+```
 
 Same limitations as always
 --------------------------
 
 Having a great workflow doesn't get us over the problem of large margins of error with small geographies. MOEs for low-income rates aren't bad for towns & bigger, but ugly for neighborhoods
 
-``` r
-pov_df <- profile %>%
-  select(name, percent_low_income, percent_low_income_moe) %>%
-  mutate(upper = percent_low_income + percent_low_income_moe,
-         lower = percent_low_income - percent_low_income_moe) %>%
-  rename(estimate = percent_low_income) %>%
-  select(-percent_low_income_moe)
-```
+![](index_gh_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-17-1.png)
 
-``` r
-ggplot(pov_df, aes(x = reorder(name, desc(estimate)), y = estimate)) +
-  geom_col(fill = "#8B83E4") +
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25) +
-  scale_y_continuous(labels = scales::percent) +
-  labs(x = NULL, y = "Low-income rate", title = "Low-income rate by location, 2015")
-```
+Have fun with the ACS!
+----------------------
 
-![](index_gh_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-19-1.png)
+<https://github.com/CT-Data-Haven>
+
+<camille@ctdatahaven.org>
